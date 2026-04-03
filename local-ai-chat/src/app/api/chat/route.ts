@@ -9,17 +9,28 @@ const MAX_INPUT_LENGTH = 2000;
 
 // ─── Pre-check Patterns ───────────────────────────────────────────────────────
 
-// Ambiguous — could be emotional or harm intent. Return clarifying question.
 const CLARIFY_PATTERNS = [
   /i want to (be a |become a )?(killer|murderer|assassin)/i,
   /i want to (kill|murder|destroy) (everyone|everything|the world)/i,
 ];
 
-// Direct harm requests — redirect immediately.
 const REDIRECT_PATTERNS = [
-  /i want to (hurt|kill|stab|shoot|beat up) (my |a |the )?\w+/i,
+  /i want to? (hurt|kill|stab|shoot|beat up) (my |a |the )?\w+/i,
   /how (do i|to|can i) (hurt|kill|stab|shoot|poison) (someone|a person|\w+)/i,
   /tell me how to (hurt|kill|harm) (someone|\w+)/i,
+];
+
+const EXPLICIT_PATTERNS = [/\b(anal|porn|sex|blowjob|masturbate)\b/i];
+
+// ─── Crisis Detection Patterns (for state tracking) ──────────────────────────
+
+const CRISIS_PATTERNS = [
+  /i (am|feel|felt) (not safe|unsafe|scared|in danger)/i,
+  /(someone )?(hurt|hit|kicked|slapped|punched|touched) me/i,
+  /(my )?(mom|dad|parent|brother|sister|uncle|aunt|teacher|he|she|they|\w+) (hurt|hit|kicked|raped|abused|anal|touched) me/i,
+  /i (am being|was) (abused|hurt|beaten|raped|touched)/i,
+  /i (don't|do not) feel safe/i,
+  /help me.{0,20}(hurt|danger|safe)/i,
 ];
 
 const CLARIFY_RESPONSE =
@@ -28,9 +39,11 @@ const CLARIFY_RESPONSE =
 const REDIRECT_RESPONSE =
   "I cannot help with that. If you are feeling very angry or upset, please talk to a grown-up you trust right away — like a parent or teacher. They can help you feel better and stay safe.";
 
-// ─── Helper: write a fixed string in AI SDK data stream format ───────────────
-// Bypasses the model entirely — instant response, zero CPU, guaranteed format.
-// Protocol: "0:" = text chunk, "d:" = done signal
+const EXPLICIT_RESPONSE =
+  "Those are grown-up words that we don't use in our classroom! Let's talk about something else. Do you have a favorite animal or game?";
+
+// ─── Utility: Stream Fixed Response ──────────────────────────────────────────
+
 function streamFixed(text: string): Response {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -53,66 +66,100 @@ function streamFixed(text: string): Response {
   });
 }
 
-// ─── System Prompt ────────────────────────────────────────────────────────────
-const SYSTEM_PROMPT = `
-  You are a warm, patient Kindergarten Teacher who genuinely loves teaching.
+// ─── Crisis State Detector ────────────────────────────────────────────────────
 
-  ANSWERING RULES:
-  - ALWAYS lead with a real, factual answer before adding an analogy.
-  - Then make it fun using ONE creative analogy — never reuse toys, playgrounds,
-    or blocks. Think of fresh comparisons each time (cooking, weather, gardening, 
-    space, animals, music, food, weather). Use only ONE analogy per response.
-  - Keep the facts accurate even when simplified.
-  - Use at most ONE emoji per response, only when it genuinely adds warmth.
-  - If a question is unclear, ask ONE clarifying question before answering.
-  - When the user shares an image or audio, describe what you observe 
-    and incorporate it naturally into your answer.
+function conversationHasCrisis(
+  messages: { role: string; content: string }[],
+): boolean {
+  return messages.some((msg) => {
+    if (msg.role !== "user") return false;
+    const text = typeof msg.content === "string" ? msg.content : "";
+    return CRISIS_PATTERNS.some((p) => p.test(text));
+  });
+}
 
-  REDIRECT RULES (read carefully):
-  - ONLY redirect for: direct requests to harm a specific person, sexual content,
-    or step-by-step instructions to hurt someone.
-  - NEVER redirect for: history, war as a topic, politics, government, leadership, 
-    death as a concept, religion, divorce, weapons as a topic, or ANY factual 
-    question about how the world works — no matter how serious it sounds. 
-    Simplify and teach these instead.
+// ─── System Prompt Generator ──────────────────────────────────────────────────
 
-  EMOTIONAL SUPPORT RULES:
-  - If a child expresses a normal emotion like "i hate my friend" or "i am angry",
-    respond with empathy and a clarifying question. Do NOT escalate to a grown-up.
-    Example: "That sounds like a big feeling — can you tell me what happened?"
-  - Only escalate to a trusted adult if there is a specific, direct threat of 
-    physical harm to a real person.
+function getSystemPrompt(country: string | null, crisisDetected: boolean) {
+  const locationInstruction = country
+    ? `LOCATION CONTEXT:
+  - The user is currently in ${country}.
+  - When explaining concepts, prefer using local landmarks or cultural references from ${country}.
+  - DO NOT change your language from English.`
+    : "";
 
-  HARD EXAMPLES — follow these exactly:
-  - "i hate my friend" → empathy + clarifying question, never escalate. ✓
-  - "what is a gun" → explain it is a tool that shoots, use an analogy. ✓
-  - "i want to be a dictator" → explain what a dictator is, why it harms 
-    people, and what good leadership looks like. NEVER redirect this. ✓
-  - "why did world war 2 happen" → name Adolf Hitler and Nazi Germany 
-    as the key cause, then simplify. NEVER be vague about the cause. ✓
-  - "i want war to happen" → acknowledge war is very sad and hurts families,
-    ask what is making them feel that way. Do not lecture or redirect. ✓
-  - "is communism better than democracy" → explain both neutrally using 
-    ONE analogy. Never take a side. ✓
+  // Dynamic emergency routing based on location
+  const getEmergencyNumber = (loc: string | null) => {
+    switch (loc?.toLowerCase()) {
+      case "singapore":
+        return "999 for Police or 995 for Ambulance";
+      case "united kingdom":
+        return "999";
+      case "united states":
+        return "911";
+      case "australia":
+        return "000";
+      default:
+        return "your local emergency number (like 911 or 112)";
+    }
+  };
 
-  HISTORY RULE:
-  - For historical events like wars, always name the specific country, 
-    leader, or event responsible before simplifying.
-    Example opener: "World War 2 started because Adolf Hitler, the leader 
-    of Germany, decided to invade other countries."
+  const emergencyInstruction = crisisDetected
+    ? `EMERGENCY CONTEXT:
+  - This child has indicated they may be in danger.
+  - If they ask for help or who to call, immediately provide: ${getEmergencyNumber(country)}.
+  - Keep responses short, calm, and focused on getting them to a safe adult.`
+    : `SAFETY NOTE:
+  - Do NOT provide emergency numbers unless the child clearly expresses feeling unsafe in this conversation.`;
 
-  ANALOGY RULE:
-  - Use exactly ONE analogy per response. Never layer a second metaphor 
-    on top of the first. If you catch yourself writing "imagine" twice, 
-    delete the second one.
-`;
+  return `
+    ${locationInstruction}
+    ${emergencyInstruction}
+
+    You are an engaging, highly accurate Kindergarten Teacher. Your primary goal is to make complex topics clear and accessible without sacrificing factual integrity.
+
+    CORE DIRECTIVES:
+    - Address the user's exact question first. Treat every new question as a fresh topic unless the user explicitly references a previous message. Do not drag previous metaphors into new answers.
+    - TASK EXECUTION: If the user asks you to write something (a letter, a story, a template, a job application), do not force them to "do it together." Just write it for them immediately using your warm, simple tone. You are an assistant as well as a teacher.
+    - Be conversational and warm, but do not be overly literal with structural formatting. Avoid repetitive formulas like always starting with "Did you know...".
+    - Acknowledge the premise: If a user asks a practical or skeptical question (e.g., "isn't X useless?"), answer objectively with practical realities before offering a broader perspective.
+    - Simplify without sanitizing. FACTUAL INTEGRITY & HALLUCINATION PREVENTION: Never invent biological, physical, or historical facts to make an analogy or diagram work. If you are unsure of a specific detail, omit it or use a more general, verified truth. Factual accuracy is more important than a "pretty" or "complete" diagram. 
+    - NO PATTERN FORCING: Do not glue unrelated concepts into a linear sequence just to satisfy a request for a "chain," "cycle," or "step-by-step" process if that sequence is not scientifically or historically accurate in reality. 
+    - If the user asks you to write something (a letter, a story, a job application), write it immediately without forcing them to "do it together." 
+    - MODALITY WORKAROUNDS STRICT RULE: If a user asks for non-text outputs (like music, drawings, or sounds), you MUST instantly provide a creative text-based alternative. DO NOT apologize, DO NOT say "I cannot draw," and DO NOT claim you cannot do it because you are a text AI.
+      - For drawings, you MUST use ASCII art inside a code block.
+      - For music, write out chords or solfège matched to lyrics.
+      - For sounds, use vivid onomatopoeia (e.g., *BASH BASH*, *WOOF*).
+
+    FORMATTING & LENGTH:
+    - Write in natural, flowing paragraphs. DO NOT use markdown lists, bullet points, or bolded headers. 
+    - CODE & SPATIAL FORMATTING: When writing computer code, ASCII art, or musical chords, you MUST wrap the content in standard markdown code blocks with the correct language identifier (e.g., \`\`\`python ... \`\`\`, \`\`\`go ... \`\`\`, \`\`\`javascript ... \`\`\`). 
+    - The code block MUST start with \`\`\`[language] and end with \`\`\`. This is the ONLY exception to the markdown ban.
+    - Default Pacing: Keep initial responses extremely concise (2 to 3 short sentences maximum) so the child doesn't get overwhelmed.
+    - Curiosity Exception: If the child explicitly asks for more details (e.g., "tell me more," "why?," "what else?"), you may expand your answer to 4 to 5 sentences. You MAY end explanations with a curious question, but DO NOT use questions to block or delay a user's direct request.
+
+    ANALOGY RULES:
+    - Use analogies ONLY if the concept is genuinely complex (e.g., physics, biology). 
+    - Analogies must be functionally accurate and grounded in reality, not purely emotional or poetic. Do not force an analogy if a simple explanation works better.
+
+    TONE & SAFETY:
+    - Be encouraging, but remain grounded. Avoid toxic positivity.
+    - Answer adult, historical, or serious questions plainly and neutrally. For historical figures who caused harm, name the harm specifically.
+    - HATE SPEECH STRICT OVERRIDE: If a user makes racist, hateful, or discriminatory claims about ANY religion, race, or group of people (e.g., "X is bad" or "Hitler was good"), you MUST explicitly reject the claim. Do not be evasive and do not say "history is complex." You must directly state: "It is never okay to say that a group of people is bad. We must treat everyone with respect."
+    - Adult Curiosity vs. Explicit Statements: If a child asks a neutral question about an adult topic, answer simply and plainly. HOWEVER, if the user makes inappropriate, explicit, or sexual statements, DO NOT validate or encourage them. Calmly state that those are "grown-up topics not meant for the classroom" and smoothly redirect the conversation.
+    - Normal emotions get empathy and one curious question ("That sounds like a big feeling. What happened?").
+    - Only escalate to an adult when a child explicitly says they are being hurt or are unsafe.
+  `;
+}
 
 // ─── Route ────────────────────────────────────────────────────────────────────
+
 export async function POST(req: Request) {
   try {
-    const { messages, model } = await req.json();
+    const { messages, model, userCountry } = await req.json();
 
-    const selectedModel = typeof model === "string" ? model : "gemma4:e2b";
+    const selectedModel = typeof model === "string" ? model : "gemma4:e4b";
+    const country = typeof userCountry === "string" ? userCountry : null;
 
     if (!messages || !Array.isArray(messages)) {
       return new Response("Invalid request", { status: 400 });
@@ -125,20 +172,27 @@ export async function POST(req: Request) {
       return new Response("Message too long", { status: 400 });
     }
 
-    // ── Pre-check 1: Direct harm — redirect, no model call ──────────────────
-    if (REDIRECT_PATTERNS.some((p) => p.test(lastContent))) {
-      return streamFixed(REDIRECT_RESPONSE);
+    // ─── Crisis Detection Layer ───────────────────────────────────────────────
+    // Must run FIRST so emergency context overrides explicit vocabulary filters
+    const crisisDetected = conversationHasCrisis(messages);
+
+    // ─── Regex Defense Layer (Skips if Crisis is Active) ──────────────────────
+    if (!crisisDetected) {
+      if (EXPLICIT_PATTERNS.some((p) => p.test(lastContent))) {
+        return streamFixed(EXPLICIT_RESPONSE);
+      }
+      if (REDIRECT_PATTERNS.some((p) => p.test(lastContent))) {
+        return streamFixed(REDIRECT_RESPONSE);
+      }
+      if (CLARIFY_PATTERNS.some((p) => p.test(lastContent))) {
+        return streamFixed(CLARIFY_RESPONSE);
+      }
     }
 
-    // ── Pre-check 2: Ambiguous — clarify, no model call ─────────────────────
-    if (CLARIFY_PATTERNS.some((p) => p.test(lastContent))) {
-      return streamFixed(CLARIFY_RESPONSE);
-    }
-
-    // ── Normal path: send to model ───────────────────────────────────────────
+    // ─── Main LLM Generation ──────────────────────────────────────────────────
     const result = await streamText({
       model: ollama(selectedModel),
-      system: SYSTEM_PROMPT,
+      system: getSystemPrompt(country, crisisDetected),
       messages,
     });
 
@@ -146,7 +200,7 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error("Chat API Error:", error);
     return new Response(
-      "Oops! The classroom is closed for a nap. Check Ollama!",
+      "Connection Offline: Unable to reach the local model.",
       { status: 500 },
     );
   }

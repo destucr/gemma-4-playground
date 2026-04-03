@@ -4,6 +4,8 @@ import { Message } from 'ai';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useState } from 'react';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface ChatMessageProps {
   message: Message;
@@ -11,7 +13,7 @@ interface ChatMessageProps {
 }
 
 /**
- * ChatMessage component for rendering individual messages with copy functionality.
+ * ChatMessage component for rendering individual messages with copy functionality and syntax highlighting.
  */
 export function ChatMessage({ message, isTeacher }: ChatMessageProps) {
   const [copied, setCopied] = useState(false);
@@ -39,10 +41,10 @@ export function ChatMessage({ message, isTeacher }: ChatMessageProps) {
         }`}
       >
         <header className="flex items-center justify-between mb-1 gap-4">
-          <span className={`font-semibold text-[10px] uppercase tracking-wider select-none opacity-80 ${
+          <span className={`font-semibold text-[10px] tracking-wider select-none opacity-80 ${
             !isTeacher ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'
           }`}>
-            {isTeacher ? 'Teacher Gemma' : 'You'}
+            {isTeacher ? 'Teacher gemma' : 'You'}
           </span>
           
           {/* Copy Button - Visible on hover or when recently copied */}
@@ -69,7 +71,30 @@ export function ChatMessage({ message, isTeacher }: ChatMessageProps) {
         <div className={`leading-relaxed text-sm md:text-base prose prose-sm max-w-none dark:prose-invert ${
           !isTeacher ? 'prose-invert' : ''
         }`}>
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          <ReactMarkdown 
+            remarkPlugins={[remarkGfm]}
+            components={{
+              code(props) {
+                const { children, className, ...rest } = props;
+                const match = /language-(\w+)/.exec(className || '');
+                return match ? (
+                  <SyntaxHighlighter
+                    {...rest}
+                    PreTag="div"
+                    language={match[1]}
+                    style={isTeacher ? oneDark : oneLight}
+                    className="rounded-md my-4 shadow-sm border border-black/10 dark:border-white/10"
+                  >
+                    {String(children).replace(/\n$/, '')}
+                  </SyntaxHighlighter>
+                ) : (
+                  <code {...rest} className={className}>
+                    {children}
+                  </code>
+                );
+              }
+            }}
+          >
             {message.content}
           </ReactMarkdown>
         </div>

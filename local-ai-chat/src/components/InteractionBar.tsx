@@ -175,7 +175,7 @@ export function InteractionBar({
               </form>
 
               <div className="text-center mt-4">
-              <p className="text-[10px] text-foreground/60 font-thin tracking-widest opacity-80">
+              <p className="text-[10px] text-foreground/60 font-thin opacity-80">
               Technical Research Interface • Gemma 4 (4b)
               </p>
               </div>

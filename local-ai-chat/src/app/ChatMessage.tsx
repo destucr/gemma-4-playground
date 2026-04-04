@@ -56,7 +56,7 @@ export function ChatMessage({ message, isTeacher }: ChatMessageProps) {
       <div
         className={`relative transition-all duration-300 flex flex-col ${
           !isTeacher
-            ? 'bg-[#121212] text-[#fcfaf7] rounded-2xl rounded-tr-none px-6 pt-4 pb-3 max-w-[80%] shadow-lg'
+            ? 'bg-[#262626] text-[#fcfaf7] rounded-2xl rounded-tr-none px-6 pt-4 pb-3 max-w-[80%] shadow-lg'
             : 'bg-white dark:bg-[#1e1e1e] border border-border text-[#121212] dark:text-[#fcfaf7] rounded-2xl rounded-tl-none px-6 pt-5 pb-3 max-w-[85%] shadow-sm hover:shadow-md'
         }`}
       >

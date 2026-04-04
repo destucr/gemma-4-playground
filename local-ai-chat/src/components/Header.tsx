@@ -24,7 +24,7 @@ export function Header({
       <div className="flex items-center justify-between px-4 md:px-8 max-w-7xl mx-auto">
         <div className="flex items-center gap-4">
           <div className="w-10 h-10 bg-foreground text-background rounded-lg flex items-center justify-center shadow-inner ring-1 ring-border/50 transition-transform hover:scale-105 active:scale-95">
-            <Sparkles size={20} className="text-accent" />
+            <Sparkles size={20} className="text-background" />
           </div>
           
             <div className="flex flex-col">

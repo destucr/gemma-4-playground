@@ -29,7 +29,7 @@ export function Header({
           
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
-                <h1 className="text-base font-body tracking-tight text-foreground/90 leading-none font-normal">
+                <h1 className="text-base font-display tracking-tight text-foreground/90 leading-none font-normal">
                   Playground Gemma 4
                 </h1>
                 {userCountry && (
@@ -42,7 +42,7 @@ export function Header({
                 )}
               </div>
               <span className="text-[11px] font-body text-foreground/60 mt-0.5 font-normal">
-                Gemma 4 (4b)
+                Gemma 4 (e4b) • Research Mode
               </span>
             </div>
             </div>

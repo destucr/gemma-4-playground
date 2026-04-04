@@ -10,9 +10,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
 
 const STARTER_MISSIONS = [
-  { label: "🚀 Space Story", prompt: "Tell me a fun story about a robot exploring Mars!" },
-  { label: "🐝 Bee Secret", prompt: "How do bees make honey? Explain it like we are in the garden." },
-  { label: "🎨 Art Class", prompt: "What are the primary colors, and how can I mix them to make purple?" },
+  { label: "🏗️ System Design", prompt: "Design a high-performance distributed caching layer for a social media platform." },
+  { label: "⚡ Code Optimization", prompt: "Explain how to optimize a Go service for low-latency message processing." },
+  { label: "🛡️ Security Audit", prompt: "What are the core security principles for designing a zero-trust architecture?" },
 ];
 
 export default function Chat() {
@@ -144,10 +144,10 @@ export default function Chat() {
                 </div>
                 <div className="space-y-3">
                   <h2 className="text-4xl font-display tracking-tight text-foreground">
-                    A big world of learning awaits!
+                    Deep Reasoning Interface
                   </h2>
                   <p className="text-stone-500 dark:text-stone-400 max-w-sm mx-auto text-base">
-                    I&apos;m so glad you&apos;re here. We can talk about anything! Try a starter lesson or ask me a new question.
+                    The local model is initialized and ready for technical research, code generation, and complex analysis.
                   </p>
                 </div>
                 

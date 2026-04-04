@@ -149,36 +149,36 @@ export function InteractionBar({
               rows={1}
               className="w-full py-2 px-1 bg-transparent border-none outline-none text-[15px] resize-none overflow-hidden leading-normal placeholder:text-foreground/50 font-medium align-middle dark:text-foreground"
               value={input}
-              placeholder={pendingQueue.length > 0 ? "Add to your queue..." : "What would you like to learn about?"}
+              placeholder={pendingQueue.length > 0 ? "Add to your queue..." : "Enter research query or code request..."}
               onChange={handleInputChange}
               onKeyDown={onKeyDown}
               autoComplete="off"
               style={{ maxHeight: '120px' }}
-            />
-          </div>
+              />
+              </div>
 
-          <button
-            type="submit"
-            className={`p-2.5 rounded-xl transition-all shadow-lg active:scale-95 flex-shrink-0 border border-transparent ${
+              <button
+              type="submit"
+              className={`p-2.5 rounded-xl transition-all shadow-lg active:scale-95 flex-shrink-0 border border-transparent ${
               isLoading 
                 ? 'bg-stone-100 dark:bg-stone-800 text-foreground/40' 
                 : 'bg-foreground dark:bg-background text-background dark:text-foreground hover:opacity-90'
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
-            disabled={!input.trim() && (!files || files.length === 0)}
-          >
-            {isLoading ? (
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
+              disabled={!input.trim() && (!files || files.length === 0)}
+              >
+              {isLoading ? (
               <Loader2 size={18} className="animate-spin" />
-            ) : (
+              ) : (
               <Send size={18} />
-            )}
-          </button>
-        </form>
-        
-        <div className="text-center mt-4">
-          <p className="text-[10px] font-regular opacity-70">
-            Running on local machine, verify response accuracy • Gemma 4 (4b)
-          </p>
-        </div>
+              )}
+              </button>
+              </form>
+
+              <div className="text-center mt-4">
+              <p className="text-[10px] text-foreground/60 font-thin tracking-widest opacity-80">
+              Technical Research Interface • Gemma 4 (4b)
+              </p>
+              </div>
       </div>
     </footer>
   );

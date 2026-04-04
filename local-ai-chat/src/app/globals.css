@@ -31,12 +31,89 @@ body {
   font-family: var(--font-body);
 }
 
+/* Typography Overrides */
+.prose code {
+  background-color: transparent !important;
+  padding: 0 !important;
+  font-weight: 700 !important;
+}
+
+.prose code::before,
+.prose code::after {
+  content: "" !important;
+}
+
+::selection {
+  background-color: rgba(18, 18, 18, 0.1); /* Soft Ink tint */
+  color: inherit;
+}
+
+.dark ::selection {
+  background-color: rgba(252, 250, 247, 0.2);
+}
+
 .font-display {
   font-family: var(--font-display);
 }
 
 .font-body {
   font-family: var(--font-body);
+}
+
+/* Chalkboard Aesthetic */
+.chalkboard {
+  background-color: white;
+  border: 1px solid var(--color-border);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);
+  font-family: var(--font-body);
+  position: relative;
+  overflow: hidden;
+  line-height: 1.5;
+  text-align: left !important; /* Force left align regardless of parent */
+}
+
+.dark .chalkboard {
+  background-color: #1e1e1e;
+  border-color: #333;
+}
+
+.chalkboard-title {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.5rem;
+  color: var(--foreground);
+  text-align: left;
+}
+
+/* Reset prose margins inside chalkboard */
+.chalkboard p, 
+.chalkboard ul, 
+.chalkboard ol, 
+.chalkboard li {
+  margin-top: 0 !important;
+  margin-bottom: 0.5rem !important;
+  text-align: left !important;
+}
+
+.chalkboard ul, .chalkboard ol {
+  margin-left: 1.25rem !important;
+  list-style-type: none !important;
+}
+
+.chalkboard li {
+  margin-bottom: 0.4rem !important;
+}
+
+.chalkboard hr {
+  border: 0;
+  border-top: 1px dashed var(--color-border);
+  margin: 1rem 0 !important;
+  opacity: 0.5;
 }
 
 @keyframes thinkingFadeIn {

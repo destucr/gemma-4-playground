@@ -21,9 +21,14 @@ interface ChatMessageProps {
 export function ChatMessage({ message, isTeacher }: ChatMessageProps) {
   const [copied, setCopied] = useState(false);
 
+  // Extract thought block if present
+  const thoughtMatch = /<\|channel>thought([\s\S]*?)<channel\|>/.exec(message.content);
+  const thoughtContent = thoughtMatch ? thoughtMatch[1].trim() : null;
+  const visibleContent = message.content.replace(/<\|channel>thought[\s\S]*?<channel\|>/, '').trim();
+
   const copyToClipboard = async () => {
     try {
-      await navigator.clipboard.writeText(message.content);
+      await navigator.clipboard.writeText(visibleContent);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
@@ -61,6 +66,19 @@ export function ChatMessage({ message, isTeacher }: ChatMessageProps) {
             : 'bg-white dark:bg-[#1e1e1e] border border-border text-[#121212] dark:text-[#fcfaf7] rounded-2xl rounded-tl-none px-6 pt-6 pb-4 max-w-[85%] shadow-sm hover:shadow-md'
         }`}
       >
+        {/* Internal Reasoning (Thought Channel) */}
+        {isTeacher && thoughtContent && (
+          <div className="mb-6 pb-6 border-b border-border/50">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-1.5 h-1.5 bg-foreground/20 rounded-full" />
+              <span className="text-[10px] font-bold tracking-widest text-foreground/40 uppercase">Internal Reasoning</span>
+            </div>
+            <div className="text-xs text-foreground/50 font-mono leading-relaxed bg-black/5 dark:bg-white/5 p-4 rounded-xl italic">
+              {thoughtContent}
+            </div>
+          </div>
+        )}
+
         <div className={`leading-relaxed text-[15px] md:text-base prose prose-slate max-w-none flex-1 ${
           !isTeacher 
             ? 'prose-invert prose-p:text-[#fcfaf7] prose-headings:text-[#fcfaf7] prose-strong:text-white prose-code:text-[#fcfaf7] prose-code:bg-transparent prose-code:before:content-none prose-code:after:content-none' 
@@ -103,7 +121,7 @@ export function ChatMessage({ message, isTeacher }: ChatMessageProps) {
               }
             }}
           >
-            {message.content}
+            {visibleContent}
           </ReactMarkdown>
         </div>
 

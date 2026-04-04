@@ -1,5 +1,5 @@
 import { createOllama } from "ollama-ai-provider";
-import { streamText } from "ai";
+import { streamText, type CoreMessage } from "ai";
 
 const ollama = createOllama({
   baseURL: process.env.OLLAMA_BASE_URL || "http://localhost:11434/api",
@@ -85,7 +85,8 @@ function getSystemPrompt(country: string | null, crisisDetected: boolean) {
     ? `LOCATION CONTEXT: The user is in ${country}. Use this for regional relevance if applicable.`
     : "";
 
-  return `
+  // MANDATORY: Start with <|think|> to enable Gemma 4's reasoning channel
+  return `<|think|>
     ${locationInstruction}
     ${crisisDetected ? "CRISIS MODE: The user has indicated a safety risk. Prioritize immediate, direct help resources." : ""}
 
@@ -122,7 +123,16 @@ export async function POST(req: Request) {
       return new Response("Invalid request", { status: 400 });
     }
 
-    const lastMessage = messages[messages.length - 1];
+    // ─── Thinking Mode Rule: Strip prior thought blocks from history ─────────
+    // Multi-turn chat rule: only keep final visible answer in chat history.
+    const cleanMessages = messages.map((m: { role: string; content: string }) => ({
+      ...m,
+      content: m.role === 'assistant' 
+        ? m.content.replace(/<\|channel>thought[\s\S]*?<channel\|>/g, '').trim()
+        : m.content
+    }));
+
+    const lastMessage = cleanMessages[cleanMessages.length - 1];
     const lastContent: string = lastMessage?.content ?? "";
 
     if (lastContent.length > MAX_INPUT_LENGTH) {
@@ -130,10 +140,9 @@ export async function POST(req: Request) {
     }
 
     // ─── Crisis Detection Layer ───────────────────────────────────────────────
-    // Must run FIRST so emergency context overrides explicit vocabulary filters
-    const crisisDetected = conversationHasCrisis(messages);
+    const crisisDetected = conversationHasCrisis(cleanMessages);
 
-    // ─── Regex Defense Layer (Skips if Crisis is Active) ──────────────────────
+    // ─── Regex Defense Layer ──────────────────────────────────────────────────
     if (!crisisDetected) {
       if (EXPLICIT_PATTERNS.some((p) => p.test(lastContent))) {
         return streamFixed(EXPLICIT_RESPONSE);
@@ -150,7 +159,7 @@ export async function POST(req: Request) {
     const result = await streamText({
       model: ollama(selectedModel),
       system: getSystemPrompt(country, crisisDetected),
-      messages,
+      messages: cleanMessages as unknown as CoreMessage[],
     });
 
     return result.toDataStreamResponse();

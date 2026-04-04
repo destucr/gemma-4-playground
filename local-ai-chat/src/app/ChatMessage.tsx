@@ -95,7 +95,7 @@ export function ChatMessage({ message, isTeacher }: ChatMessageProps) {
                 return (
                   <code 
                     {...rest} 
-                    className={`${!isTeacher ? 'text-white' : 'text-[#121212] dark:text-[#fcfaf7]'} font-mono text-[0.95em] font-bold`}
+                    className={`${!isTeacher ? 'text-white' : 'text-[#121212] dark:text-[#fcfaf7]'} font-mono text-[0.95em] font-medium`}
                   >
                     {children}
                   </code>

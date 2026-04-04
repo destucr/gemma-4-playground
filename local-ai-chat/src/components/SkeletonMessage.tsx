@@ -2,40 +2,35 @@
 
 import { motion } from 'framer-motion';
 
+/**
+ * A minimal, elegant thinking indicator using three pulsing dots.
+ * Replaces the 'dialog box' style for a cleaner research interface.
+ */
 export function SkeletonMessage() {
   return (
-    <div className="flex justify-start items-end gap-4 mt-6 mb-8 animate-in fade-in duration-500">
-      <div className="w-10 h-10 bg-stone-200 dark:bg-stone-800 rounded-lg flex-shrink-0 shadow-inner" />
+    <div className="flex items-center gap-3 mt-4 mb-8 pl-4 animate-in fade-in duration-500">
+      {/* Small subtle role identifier */}
+      <div className="text-[10px] font-medium text-foreground/40 select-none font-body">
+        Thinking
+      </div>
       
-      <div className="bg-white dark:bg-stone-900 border border-border px-5 py-4 rounded-2xl rounded-tl-sm shadow-sm flex flex-col gap-3 min-w-[240px] max-w-[60%]">
-        {/* Animated Skeleton Lines */}
-        <div className="space-y-2">
-          <motion.div 
-            initial={{ opacity: 0.3 }}
-            animate={{ opacity: [0.3, 0.6, 0.3] }}
-            transition={{ duration: 1.5, repeat: Infinity }}
-            className="h-2.5 bg-stone-100 dark:bg-stone-800 rounded-full w-[90%]" 
-          />
-          <motion.div 
-            initial={{ opacity: 0.3 }}
-            animate={{ opacity: [0.3, 0.6, 0.3] }}
-            transition={{ duration: 1.5, repeat: Infinity, delay: 0.2 }}
-            className="h-2.5 bg-stone-100 dark:bg-stone-800 rounded-full w-[75%]" 
-          />
-          <motion.div 
-            initial={{ opacity: 0.3 }}
-            animate={{ opacity: [0.3, 0.6, 0.3] }}
-            transition={{ duration: 1.5, repeat: Infinity, delay: 0.4 }}
-            className="h-2.5 bg-stone-100 dark:bg-stone-800 rounded-full w-[85%]" 
-          />
-        </div>
-
-        {/* Pulse Indicator */}
-        <div className="flex gap-1.5 mt-1">
-          <div className="h-1.5 w-1.5 bg-accent/40 rounded-full animate-bounce" />
-          <div className="h-1.5 w-1.5 bg-accent/40 rounded-full animate-bounce [animation-delay:-.15s]" />
-          <div className="h-1.5 w-1.5 bg-accent/40 rounded-full animate-bounce [animation-delay:-.3s]" />
-        </div>
+      {/* Pulsing Dots */}
+      <div className="flex gap-1.5">
+        <motion.div 
+          animate={{ opacity: [0.2, 1, 0.2] }}
+          transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+          className="h-1.5 w-1.5 bg-foreground/40 rounded-full" 
+        />
+        <motion.div 
+          animate={{ opacity: [0.2, 1, 0.2] }}
+          transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut", delay: 0.2 }}
+          className="h-1.5 w-1.5 bg-foreground/40 rounded-full" 
+        />
+        <motion.div 
+          animate={{ opacity: [0.2, 1, 0.2] }}
+          transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut", delay: 0.4 }}
+          className="h-1.5 w-1.5 bg-foreground/40 rounded-full" 
+        />
       </div>
     </div>
   );

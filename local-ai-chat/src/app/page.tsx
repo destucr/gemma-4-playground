@@ -20,6 +20,7 @@ export default function Chat() {
   const [pendingQueue, setPendingQueue] = useState<{ content: string; files?: File[] }[]>([]);
   const [confirmClear, setConfirmClear] = useState(false);
   const [files, setFiles] = useState<FileList | undefined>(undefined);
+  const [persistedError, setPersistedError] = useState(false);
 
   const {
     messages,
@@ -28,14 +29,17 @@ export default function Chat() {
     handleSubmit,
     isLoading,
     error,
+    reload,
     setMessages,
     setInput,
-    append,
+    append
   } = useChat({
     body: {
       model: 'gemma4:e4b',
       userCountry,
     },
+    onError: () => setPersistedError(true),
+    onResponse: () => setPersistedError(false),
   });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -43,19 +47,30 @@ export default function Chat() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // ── Persistence ──────────────────────────────────────────────────────────
+  // Load on mount
   useEffect(() => {
     const saved = localStorage.getItem('chat-adventure');
     if (saved) {
-      try { setMessages(JSON.parse(saved)); } catch (e) { console.error(e); }
+      try { 
+        const { messages: savedMessages, hasError } = JSON.parse(saved);
+        if (savedMessages) setMessages(savedMessages);
+        if (hasError) setTimeout(() => setPersistedError(true), 0);
+      } catch { 
+        // Fallback for old schema
+        try { setMessages(JSON.parse(saved)); } catch (err) { console.error(err); }
+      }
     }
   }, [setMessages]);
 
+  // Save on change
   useEffect(() => {
-    if (messages.length > 0) {
-      localStorage.setItem('chat-adventure', JSON.stringify(messages));
+    if (messages.length > 0 || error || persistedError) {
+      localStorage.setItem('chat-adventure', JSON.stringify({ 
+        messages, 
+        hasError: !!error || persistedError
+      }));
     }
-  }, [messages]);
-
+  }, [messages, error, persistedError]);
   // ── Geolocation ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!navigator.geolocation) return;
@@ -171,6 +186,27 @@ export default function Chat() {
                   <ChatMessage key={m.id} message={m} isTeacher={m.role !== 'user'} />
                 ))}
                 {isLoading && <SkeletonMessage />}
+                
+                {(error || persistedError) && (
+                  <motion.div 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="flex flex-col items-center justify-center py-10 px-4 text-center space-y-3"
+                  >
+                    <p className="text-sm text-foreground/50 font-body">
+                      I can&apos;t seem to reach the model right now.
+                    </p>
+                    <button
+                      onClick={() => {
+                        setPersistedError(false);
+                        reload();
+                      }}
+                      className="text-xs font-medium text-foreground/80 hover:text-foreground underline underline-offset-4 transition-colors active:scale-95"
+                    >
+                      Try again
+                    </button>
+                  </motion.div>
+                )}
               </div>
             )}
           </AnimatePresence>

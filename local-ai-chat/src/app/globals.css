@@ -35,7 +35,7 @@ body {
 .prose code {
   background-color: transparent !important;
   padding: 0 !important;
-  font-weight: 700 !important;
+  font-weight: 500 !important; /* Changed from 700 to 500 */
 }
 
 .prose code::before,

@@ -6,6 +6,8 @@ import remarkGfm from 'remark-gfm';
 import { useState } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { motion } from 'framer-motion';
+import { Copy, Check, User, Sparkles } from 'lucide-react';
 
 interface ChatMessageProps {
   message: Message;
@@ -13,7 +15,7 @@ interface ChatMessageProps {
 }
 
 /**
- * ChatMessage component for rendering individual messages with copy functionality and syntax highlighting.
+ * ChatMessage component for rendering individual messages with staggered animations and rhythmic spacing.
  */
 export function ChatMessage({ message, isTeacher }: ChatMessageProps) {
   const [copied, setCopied] = useState(false);
@@ -29,47 +31,39 @@ export function ChatMessage({ message, isTeacher }: ChatMessageProps) {
   };
 
   return (
-    <article
-      className={`flex ${!isTeacher ? 'justify-end' : 'justify-start'} group mb-6 animate-in fade-in slide-in-from-bottom-2 duration-300`}
+    <motion.article
+      initial={{ opacity: 0, y: 20, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
+      className={`flex ${!isTeacher ? 'justify-end' : 'justify-start'} group mb-10 relative`}
       aria-label={`${isTeacher ? 'Teacher' : 'Your'} message`}
     >
+      {/* Role Indicator - Overlapping Aesthetic */}
+      <div className={`absolute -top-3 ${!isTeacher ? 'right-4' : 'left-4'} z-10 flex items-center gap-1.5 px-2 py-1 bg-background border border-border rounded-full shadow-sm`}>
+        {isTeacher ? (
+          <>
+            <Sparkles size={10} className="text-foreground" />
+            <span className="text-[10px] text-foreground font-normal">Gemma 4 (4b)</span>
+          </>
+        ) : (
+          <>
+            <User size={10} className="text-foreground/60" />
+            <span className="text-[10px] text-foreground font-normal">You</span>
+          </>
+        )}
+      </div>
+
       <div
-        className={`max-w-[85%] p-4 rounded-2xl shadow-sm relative transition-all duration-200 hover:shadow-md ${
+        className={`relative transition-all duration-300 flex flex-col ${
           !isTeacher
-            ? 'bg-blue-600 text-white rounded-tr-none'
-            : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-100 rounded-tl-none'
+            ? 'bg-[#121212] text-[#fcfaf7] rounded-2xl rounded-tr-none px-6 pt-4 pb-3 max-w-[80%] shadow-lg'
+            : 'bg-white dark:bg-[#1e1e1e] border border-border text-[#121212] dark:text-[#fcfaf7] rounded-2xl rounded-tl-none px-6 pt-5 pb-3 max-w-[85%] shadow-sm hover:shadow-md'
         }`}
       >
-        <header className="flex items-center justify-between mb-1 gap-4">
-          <span className={`font-semibold text-[10px] tracking-wider select-none opacity-80 ${
-            !isTeacher ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'
-          }`}>
-            {isTeacher ? 'Teacher gemma' : 'You'}
-          </span>
-          
-          {/* Copy Button - Visible on hover or when recently copied */}
-          <button
-            onClick={copyToClipboard}
-            className={`transition-opacity p-1 rounded-md hover:bg-black/10 dark:hover:bg-white/10 ${
-              copied ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-            }`}
-            title="Copy message"
-            aria-label="Copy message"
-          >
-            {copied ? (
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-              </svg>
-            )}
-          </button>
-        </header>
-        
-        <div className={`leading-relaxed text-sm md:text-base prose prose-sm max-w-none dark:prose-invert ${
-          !isTeacher ? 'prose-invert' : ''
+        <div className={`leading-relaxed text-[15px] md:text-base prose prose-slate max-w-none flex-1 ${
+          !isTeacher 
+            ? 'prose-invert prose-p:text-[#fcfaf7] prose-headings:text-[#fcfaf7] prose-strong:text-white' 
+            : 'dark:prose-invert prose-p:text-[#121212] dark:prose-p:text-[#fcfaf7] prose-headings:text-[#121212] dark:prose-headings:text-white'
         }`}>
           <ReactMarkdown 
             remarkPlugins={[remarkGfm]}
@@ -78,17 +72,19 @@ export function ChatMessage({ message, isTeacher }: ChatMessageProps) {
                 const { children, className, ...rest } = props;
                 const match = /language-(\w+)/.exec(className || '');
                 return match ? (
-                  <SyntaxHighlighter
-                    {...rest}
-                    PreTag="div"
-                    language={match[1]}
-                    style={isTeacher ? oneDark : oneLight}
-                    className="rounded-md my-4 shadow-sm border border-black/10 dark:border-white/10"
-                  >
-                    {String(children).replace(/\n$/, '')}
-                  </SyntaxHighlighter>
+                  <div className="relative group/code">
+                    <SyntaxHighlighter
+                      {...rest}
+                      PreTag="div"
+                      language={match[1]}
+                      style={isTeacher ? oneDark : oneLight}
+                      className="rounded-xl my-4 shadow-sm border border-black/10 dark:border-white/10 !bg-black"
+                    >
+                      {String(children).replace(/\n$/, '')}
+                    </SyntaxHighlighter>
+                  </div>
                 ) : (
-                  <code {...rest} className={className}>
+                  <code {...rest} className={`${!isTeacher ? 'bg-white/10 text-white' : 'bg-black/5 text-foreground'} px-1.5 py-0.5 rounded font-bold`}>
                     {children}
                   </code>
                 );
@@ -101,21 +97,36 @@ export function ChatMessage({ message, isTeacher }: ChatMessageProps) {
 
         {/* Render Attachments */}
         {message.experimental_attachments?.map((attachment, index) => (
-          <div key={`${message.id}-${index}`} className="mt-3 overflow-hidden rounded-lg">
+          <div key={`${message.id}-${index}`} className="mt-4 overflow-hidden rounded-xl border border-border/50 shadow-inner bg-stone-50 dark:bg-stone-950/50 p-1">
             {attachment.contentType?.startsWith('image/') && (
               // eslint-disable-next-line @next/next/no-img-element
               <img 
                 src={attachment.url} 
                 alt="Attachment" 
-                className="max-w-full h-auto border border-white/10" 
+                className="max-w-full h-auto rounded-lg" 
               />
             )}
             {attachment.contentType?.startsWith('audio/') && (
-              <audio src={attachment.url} controls className="w-full h-8" />
+              <audio src={attachment.url} controls className="w-full h-10 px-2" />
             )}
           </div>
         ))}
+
+        {/* Hanging Copy Button - Positioned absolutely outside the bubble */}
+        <div className={`absolute -bottom-8 ${!isTeacher ? 'left-0' : 'right-0'} flex items-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none`}>
+          <button
+            onClick={copyToClipboard}
+            className={`pointer-events-auto p-1.5 rounded-lg bg-background border border-border shadow-sm hover:bg-stone-100 dark:hover:bg-stone-800 transition-all ${copied ? 'text-green-500' : 'text-foreground/40'}`}
+            title="Copy message"
+          >
+            <div className="flex items-center gap-1.5 px-1">
+              {copied ? <Check size={12} /> : <Copy size={12} />}
+              <span className="text-[9px] font-normal">Copy</span>
+            </div>
+          </button>
+        </div>
       </div>
-    </article>
+    </motion.article>
   );
 }
+

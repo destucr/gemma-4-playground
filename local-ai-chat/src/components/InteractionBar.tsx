@@ -2,6 +2,7 @@
 
 import { Paperclip, Send, X, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect } from 'react';
 
 interface InteractionBarProps {
   input: string;
@@ -41,6 +42,16 @@ export function InteractionBar({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) setFiles(e.target.files);
   };
+
+  // ── Auto-resize Logic ──────────────────────────────────────────────────
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.style.height = 'auto';
+      const newHeight = Math.min(textarea.scrollHeight, 300);
+      textarea.style.height = `${newHeight}px`;
+    }
+  }, [input, textareaRef]);
 
   return (
     <footer className="w-full bg-background/95 backdrop-blur-xl p-4 pb-8 sticky bottom-0 z-30 border-t border-border/50">
@@ -125,7 +136,7 @@ export function InteractionBar({
 
         <form
           onSubmit={onChatSubmit}
-          className="relative flex gap-2 items-center bg-white dark:bg-zinc-900 p-1.5 rounded-2xl border border-border shadow-md focus-within:ring-2 focus-within:ring-foreground/10 transition-all"
+          className="relative flex gap-2 items-end bg-white dark:bg-zinc-900 p-1.5 rounded-2xl border border-border shadow-md focus-within:ring-2 focus-within:ring-foreground/10 transition-all"
         >
           <input
             type="file"
@@ -139,29 +150,28 @@ export function InteractionBar({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="p-2.5 text-foreground/60 hover:text-foreground hover:bg-stone-50 dark:hover:bg-stone-800 rounded-xl transition-all active:scale-90 flex-shrink-0"
+            className="p-2.5 mb-0.5 text-foreground/60 hover:text-foreground hover:bg-stone-50 dark:hover:bg-stone-800 rounded-xl transition-all active:scale-90 flex-shrink-0"
             aria-label="Attach files"
           >
             <Paperclip size={18} />
           </button>
 
-          <div className="flex-1">
+          <div className="flex-1 min-h-[40px] flex items-center">
             <textarea
               ref={textareaRef}
               rows={1}
-              className="w-full py-2 px-1 bg-transparent border-none outline-none text-[15px] resize-none overflow-hidden leading-normal placeholder:text-foreground/50 font-medium align-middle dark:text-foreground"
+              className="w-full py-2 px-1 bg-transparent border-none outline-none text-[15px] resize-none overflow-y-auto scrollbar-thin leading-normal placeholder:text-foreground/50 font-medium align-middle dark:text-foreground"
               value={input}
               placeholder={pendingQueue.length > 0 ? "Add to your queue..." : "Enter research query or code request..."}
               onChange={handleInputChange}
               onKeyDown={onKeyDown}
               autoComplete="off"
-              style={{ maxHeight: '120px' }}
             />
           </div>
 
           <button
             type="submit"
-            className={`p-2.5 rounded-xl transition-all shadow-lg active:scale-95 flex-shrink-0 border border-transparent ${
+            className={`p-2.5 mb-0.5 rounded-xl transition-all shadow-lg active:scale-95 flex-shrink-0 border border-transparent ${
               isLoading 
                 ? 'bg-stone-100 dark:bg-stone-800 text-foreground/40' 
                 : 'bg-foreground dark:bg-background text-background dark:text-foreground hover:opacity-90'

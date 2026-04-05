@@ -3,7 +3,9 @@
 import { Message } from 'ai';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 import rehypeRaw from 'rehype-raw';
+import rehypeKatex from 'rehype-katex';
 import { useState } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -85,8 +87,8 @@ export function ChatMessage({ message, isTeacher }: ChatMessageProps) {
             : 'dark:prose-invert prose-p:text-[#121212] dark:prose-p:text-[#fcfaf7] prose-headings:text-[#121212] dark:prose-headings:text-white prose-code:text-[#121212] dark:prose-code:text-[#fcfaf7] prose-code:bg-transparent prose-code:before:content-none prose-code:after:content-none'
         }`}>
           <ReactMarkdown 
-            remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeRaw]}
+            remarkPlugins={[remarkGfm, remarkMath]}
+            rehypePlugins={[rehypeRaw, rehypeKatex]}
             components={{
               code(props) {
                 const { children, className, ...rest } = props;

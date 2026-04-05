@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Alegreya, Source_Sans_3 } from "next/font/google";
 import "./globals.css";
+import "katex/dist/katex.min.css";
 
 const displayFont = Alegreya({
   variable: "--font-alegreya",

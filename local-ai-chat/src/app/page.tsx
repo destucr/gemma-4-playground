@@ -8,6 +8,7 @@ import { InteractionBar } from '@/components/InteractionBar';
 import { SkeletonMessage } from '@/components/SkeletonMessage';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
+import { validateModel } from '@/lib/utils';
 
 const STARTER_MISSIONS = [
   { label: "🏗️ System Design", prompt: "Design a high-performance distributed caching layer for a social media platform." },
@@ -21,6 +22,7 @@ export default function Chat() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [files, setFiles] = useState<FileList | undefined>(undefined);
   const [persistedError, setPersistedError] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<string>('auto');
 
   const {
     messages,
@@ -35,7 +37,7 @@ export default function Chat() {
     append
   } = useChat({
     body: {
-      model: 'gemma4:e4b',
+      model: selectedModel === 'auto' ? 'gemma4:26b' : selectedModel,
       userCountry,
     },
     onError: () => setPersistedError(true),
@@ -52,9 +54,13 @@ export default function Chat() {
     const saved = localStorage.getItem('chat-adventure');
     if (saved) {
       try { 
-        const { messages: savedMessages, hasError } = JSON.parse(saved);
+        const { messages: savedMessages, hasError, modelPref } = JSON.parse(saved);
         if (savedMessages) setMessages(savedMessages);
         if (hasError) setTimeout(() => setPersistedError(true), 0);
+        
+        // Validate restored preference to avoid stale/wrong model names
+        const validated = validateModel(modelPref);
+        setTimeout(() => setSelectedModel(validated), 0);
       } catch { 
         // Fallback for old schema
         try { setMessages(JSON.parse(saved)); } catch (err) { console.error(err); }
@@ -64,13 +70,15 @@ export default function Chat() {
 
   // Save on change
   useEffect(() => {
-    if (messages.length > 0 || error || persistedError) {
+    if (messages.length > 0 || error || persistedError || selectedModel !== 'auto') {
       localStorage.setItem('chat-adventure', JSON.stringify({ 
         messages, 
-        hasError: !!error || persistedError
+        hasError: !!error || persistedError,
+        modelPref: selectedModel
       }));
     }
-  }, [messages, error, persistedError]);
+  }, [messages, error, persistedError, selectedModel]);
+
   // ── Geolocation ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!navigator.geolocation) return;
@@ -140,6 +148,8 @@ export default function Chat() {
         confirmClear={confirmClear}
         setConfirmClear={setConfirmClear}
         onClear={clearSession}
+        selectedModel={selectedModel}
+        onModelChange={setSelectedModel}
       />
 
       <main className="flex-1 overflow-y-auto">
@@ -226,6 +236,7 @@ export default function Chat() {
         setFiles={setFiles}
         fileInputRef={fileInputRef}
         textareaRef={textareaRef}
+        selectedModel={selectedModel}
       />
     </div>
   );

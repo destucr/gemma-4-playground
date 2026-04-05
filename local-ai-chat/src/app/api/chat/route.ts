@@ -1,8 +1,9 @@
 import { createOllama } from "ollama-ai-provider";
 import { streamText, type CoreMessage } from "ai";
+import { normalizeOllamaUrl } from "@/lib/utils";
 
 const ollama = createOllama({
-  baseURL: process.env.OLLAMA_BASE_URL || "http://localhost:11434/api",
+  baseURL: normalizeOllamaUrl(process.env.OLLAMA_BASE_URL),
 });
 
 const MAX_INPUT_LENGTH = 2000;
@@ -156,6 +157,8 @@ export async function POST(req: Request) {
     }
 
     // ─── Main LLM Generation ──────────────────────────────────────────────────
+    console.log(`[Chat API] Attempting generation: model=${selectedModel}, url=${process.env.OLLAMA_BASE_URL || "http://localhost:11434"}`);
+    
     const result = await streamText({
       model: ollama(selectedModel),
       system: getSystemPrompt(country, crisisDetected),
@@ -163,10 +166,14 @@ export async function POST(req: Request) {
     });
 
     return result.toDataStreamResponse();
-  } catch (error) {
-    console.error("Chat API Error:", error);
+  } catch (error: unknown) {
+    const err = error as Error & { cause?: unknown };
+    console.error("Chat API Error:", err);
+    // Log more details if available
+    if (err.cause) console.error("Error Cause:", err.cause);
+    
     return new Response(
-      "Connection Offline: Unable to reach the local model.",
+      `Connection Offline: ${err.message || "Unable to reach the local model."}`,
       { status: 500 },
     );
   }

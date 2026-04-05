@@ -105,7 +105,7 @@ export const ChatMessage = memo(function ChatMessage({ message, isTeacher }: Cha
       <div
         className={`relative transition-all duration-300 flex flex-col select-text ${
           !isTeacher
-            ? 'bg-[#121212] text-[#fcfaf7] rounded-2xl rounded-tr-none px-5 py-3 max-w-[85%] shadow-lg'
+            ? 'bg-[#121212] dark:bg-[#fcfaf7] text-[#fcfaf7] dark:text-[#121212] rounded-2xl rounded-tr-none px-5 py-3 max-w-[85%] shadow-lg'
             : 'bg-white dark:bg-[#1e1e1e] border border-border text-[#121212] dark:text-[#fcfaf7] rounded-2xl rounded-tl-none px-5 py-3 max-w-[85%] shadow-sm hover:shadow-md'
         }`}
       >
@@ -124,8 +124,8 @@ export const ChatMessage = memo(function ChatMessage({ message, isTeacher }: Cha
 
         <div className={`leading-relaxed text-[15px] md:text-base prose prose-slate max-w-none flex-1 select-text ${
           !isTeacher 
-            ? 'prose-invert prose-p:text-[#fcfaf7] prose-headings:text-[#fcfaf7] prose-strong:text-white prose-code:text-[#fcfaf7] prose-code:bg-transparent prose-code:before:content-none prose-code:after:content-none' 
-            : 'dark:prose-invert prose-p:text-[#121212] dark:prose-p:text-[#fcfaf7] prose-headings:text-[#121212] dark:prose-headings:text-white prose-code:text-[#121212] dark:prose-code:text-[#fcfaf7] prose-code:bg-transparent prose-code:before:content-none prose-code:after:content-none'
+            ? 'prose-p:text-[#fcfaf7] dark:prose-p:text-[#121212] prose-headings:text-[#fcfaf7] dark:prose-headings:text-[#121212] prose-strong:text-white dark:prose-strong:black prose-code:text-[#fcfaf7] dark:prose-code:text-[#121212] prose-code:bg-transparent' 
+            : 'dark:prose-invert prose-p:text-[#121212] dark:prose-p:text-[#fcfaf7] prose-headings:text-[#121212] dark:prose-headings:text-white prose-code:text-[#121212] dark:prose-code:text-[#fcfaf7] prose-code:bg-transparent'
         }`}>
           <ReactMarkdown 
             remarkPlugins={[remarkGfm, remarkMath]}

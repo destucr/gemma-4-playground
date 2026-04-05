@@ -1,8 +1,8 @@
 'use client';
 
-import { Paperclip, Send, X, Loader2 } from 'lucide-react';
+import { Paperclip, Send, X, Loader2, Mic, Square } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useEffect } from 'react';
+import { useEffect, useState, useRef as useReactRef } from 'react';
 
 interface InteractionBarProps {
   input: string;
@@ -31,6 +31,9 @@ export function InteractionBar({
   textareaRef,
   selectedModel
 }: InteractionBarProps) {
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useReactRef<MediaRecorder | null>(null);
+  const audioChunksRef = useReactRef<Blob[]>([]);
   
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -41,6 +44,44 @@ export function InteractionBar({
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) setFiles(e.target.files);
+  };
+
+  // ── Voice Recording Logic ──────────────────────────────────────────────
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+        const file = new File([audioBlob], `recording-${Date.now()}.wav`, { type: 'audio/wav' });
+        
+        const dataTransfer = new DataTransfer();
+        if (files) Array.from(files).forEach(f => dataTransfer.items.add(f));
+        dataTransfer.items.add(file);
+        setFiles(dataTransfer.files);
+        
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error('Microphone access denied:', err);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
   };
 
   // ── Auto-resize Logic ──────────────────────────────────────────────────
@@ -147,14 +188,29 @@ export function InteractionBar({
             accept="image/*,audio/*,text/*,.pdf"
           />
           
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="p-2.5 mb-0.5 text-foreground/60 hover:text-foreground hover:bg-stone-50 dark:hover:bg-stone-800 rounded-xl transition-all active:scale-90 flex-shrink-0"
-            aria-label="Attach files"
-          >
-            <Paperclip size={18} />
-          </button>
+          <div className="flex items-center">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="p-2.5 mb-0.5 text-foreground/60 hover:text-foreground hover:bg-stone-50 dark:hover:bg-stone-800 rounded-xl transition-all active:scale-90 flex-shrink-0"
+              aria-label="Attach files"
+            >
+              <Paperclip size={18} />
+            </button>
+
+            <button
+              type="button"
+              onClick={isRecording ? stopRecording : startRecording}
+              className={`p-2.5 mb-0.5 rounded-xl transition-all active:scale-90 flex-shrink-0 ${
+                isRecording 
+                  ? 'text-red-500 bg-red-50 dark:bg-red-900/20 animate-pulse' 
+                  : 'text-foreground/60 hover:text-foreground hover:bg-stone-50 dark:hover:bg-stone-800'
+              }`}
+              aria-label={isRecording ? "Stop recording" : "Record voice"}
+            >
+              {isRecording ? <Square size={18} /> : <Mic size={18} />}
+            </button>
+          </div>
 
           <div className="flex-1 min-h-[40px] flex items-center">
             <textarea

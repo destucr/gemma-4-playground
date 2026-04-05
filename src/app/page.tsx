@@ -284,14 +284,28 @@ export default function Chat() {
 
     if (!currentSessionId || !encryptionKey) return;
 
-    const fileArray = files ? Array.from(files) : undefined;
-    const encryptedContent = await encrypt(content || (fileArray?.length ? "Processing attachments..." : ""), encryptionKey);
+    // ── Serialize Attachments ──────────────────────────────────────────
+    const fileArray = files ? Array.from(files) : [];
+    const attachments = await Promise.all(fileArray.map(async (file) => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve({
+          name: file.name,
+          contentType: file.type,
+          url: reader.result as string
+        });
+        reader.readAsDataURL(file);
+      });
+    }));
+
+    // Encrypt and save user message to Supabase
+    const encryptedContent = await encrypt(content || (fileArray.length ? "Processing attachments..." : ""), encryptionKey);
     
     await supabase.from('messages').insert({
       session_id: currentSessionId,
       role: 'user',
       content: encryptedContent,
-      experimental_attachments: fileArray
+      experimental_attachments: attachments
     });
 
     if (isLoading) {

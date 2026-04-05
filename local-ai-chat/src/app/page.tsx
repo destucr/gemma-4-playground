@@ -9,7 +9,9 @@ import { SkeletonMessage } from '@/components/SkeletonMessage';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageSquare, Plus, Trash2, ChevronLeft, ChevronRight, Layout, Sparkles } from 'lucide-react';
 import { validateModel } from '@/lib/utils';
+import { getOrCreateKey, encrypt, decrypt } from '@/lib/encryption';
 import { Message } from 'ai';
+import { supabase } from '@/lib/supabase';
 
 // ─── Constants & Types ──────────────────────────────────────────────────────
 const STARTER_MISSIONS = [
@@ -33,10 +35,12 @@ export default function Chat() {
   const [persistedError, setPersistedError] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string>('auto');
   
-  // ── Multi-Session State ────────────────────────────────────────────────────
+  // ── Multi-Session & Encryption State ──────────────────────────────────────
   const [sessions, setSessions] = useState<Record<string, ChatSession>>({});
-  const [currentSessionId, setCurrentSessionId] = useState<string>('initial-session');
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [encryptionKey, setEncryptionKey] = useState<CryptoKey | null>(null);
 
   const {
     messages,
@@ -50,7 +54,7 @@ export default function Chat() {
     setInput,
     append
   } = useChat({
-    id: currentSessionId, 
+    id: currentSessionId || undefined, 
     initialMessages: [],
     body: {
       model: selectedModel === 'auto' ? 'gemma4:26b' : selectedModel,
@@ -58,23 +62,32 @@ export default function Chat() {
     },
     onError: () => setPersistedError(true),
     onResponse: () => setPersistedError(false),
-    onFinish: (message) => {
-      // Auto-title update
-      setSessions(prev => {
-        const session = prev[currentSessionId];
-        if (session && (session.title === 'New Chat' || !session.title)) {
-          const firstMsg = [...messages, message].find(m => m.role === 'user')?.content || 'New Chat';
-          const newTitle = firstMsg.slice(0, 30) + (firstMsg.length > 30 ? '...' : '');
-          return {
-            ...prev,
-            [currentSessionId]: { ...session, title: newTitle, messages: [...messages, message] }
-          };
-        }
-        return {
-          ...prev,
-          [currentSessionId]: { ...session, messages: [...messages, message] }
-        };
+    onFinish: async (message) => {
+      if (!currentSessionId || !encryptionKey) return;
+      
+      // Encrypt and save assistant message to Supabase
+      const encryptedContent = await encrypt(message.content, encryptionKey);
+      await supabase.from('messages').insert({
+        session_id: currentSessionId,
+        role: message.role,
+        content: encryptedContent,
+        experimental_attachments: message.experimental_attachments
       });
+
+      // Auto-title update if first exchange
+      const currentSession = sessions[currentSessionId];
+      if (currentSession && (currentSession.title === 'New Chat' || !currentSession.title)) {
+        const firstMsg = [...messages, message].find(m => m.role === 'user')?.content || 'New Chat';
+        const newTitle = firstMsg.slice(0, 30) + (firstMsg.length > 30 ? '...' : '');
+        
+        const encryptedTitle = await encrypt(newTitle, encryptionKey);
+        await supabase.from('sessions').update({ title: encryptedTitle }).eq('id', currentSessionId);
+        
+        setSessions(prev => ({
+          ...prev,
+          [currentSessionId]: { ...currentSession, title: newTitle }
+        }));
+      }
     }
   });
 
@@ -83,90 +96,118 @@ export default function Chat() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // ── Persistence ──────────────────────────────────────────────────────────
+  // ── Action Callbacks ──────────────────────────────────────────────────
+  
+  const switchSession = useCallback(async (id: string, currentSessions: Record<string, ChatSession>, key: CryptoKey) => {
+    const session = currentSessions[id];
+    if (!session) return;
+
+    setCurrentSessionId(id);
+    localStorage.setItem('last-session-id', id);
+
+    // Fetch and decrypt messages
+    const { data: msgs } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('session_id', id)
+      .order('created_at', { ascending: true });
+
+    const formattedMsgs: Message[] = await Promise.all((msgs || []).map(async m => ({
+      id: m.id,
+      role: m.role as unknown as Message['role'],
+      content: await decrypt(m.content, key),
+      experimental_attachments: m.experimental_attachments as unknown as Message['experimental_attachments']
+    })));
+
+    setMessages(formattedMsgs);
+  }, [setMessages]);
+
+  const createNewSession = useCallback(async (key: CryptoKey) => {
+    const id = crypto.randomUUID();
+    const encryptedTitle = await encrypt('New Chat', key);
+    
+    await supabase.from('sessions').insert({
+      id,
+      title: encryptedTitle,
+      model_pref: selectedModel
+    });
+
+    setSessions(prev => ({
+      ...prev,
+      [id]: { id, title: 'New Chat', messages: [], createdAt: Date.now() }
+    }));
+    setCurrentSessionId(id);
+    localStorage.setItem('last-session-id', id);
+    setMessages([]);
+    setInput('');
+  }, [selectedModel, setMessages, setInput]);
+
+  const deleteSession = useCallback(async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    await supabase.from('sessions').delete().eq('id', id);
+
+    setSessions(prev => {
+      const newSessions = { ...prev };
+      delete newSessions[id];
+      
+      const remainingIds = Object.keys(newSessions);
+      if (remainingIds.length === 0) {
+        if (encryptionKey) createNewSession(encryptionKey);
+        return prev;
+      } else if (id === currentSessionId) {
+        if (encryptionKey) switchSession(remainingIds[0], newSessions, encryptionKey);
+      }
+      return newSessions;
+    });
+  }, [currentSessionId, encryptionKey, createNewSession, switchSession]);
+
+  // ── Persistence: Load from Supabase ──────────────────────────────────────
   useEffect(() => {
-    const saved = localStorage.getItem('chat-lab-v3');
+    async function init() {
+      // 1. Get/Create Encryption Key
+      const key = await getOrCreateKey();
+      setEncryptionKey(key);
+
+      // 2. Fetch Sessions
+      const { data: savedSessions } = await supabase
+        .from('sessions')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (savedSessions && savedSessions.length > 0) {
+        const sessionMap: Record<string, ChatSession> = {};
+        for (const s of savedSessions) {
+          sessionMap[s.id] = {
+            id: s.id,
+            title: await decrypt(s.title, key),
+            messages: [],
+            createdAt: new Date(s.created_at).getTime()
+          };
+        }
+        setSessions(sessionMap);
+        
+        const lastId = localStorage.getItem('last-session-id') || savedSessions[0].id;
+        await switchSession(lastId, sessionMap, key);
+      } else {
+        await createNewSession(key);
+      }
+      setIsInitializing(false);
+    }
+    init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only on mount
+
+  // Sync model preference
+  useEffect(() => {
+    const saved = localStorage.getItem('chat-lab-v3-model');
     if (saved) {
-      try { 
-        const { sessions: savedSessions, currentId, modelPref } = JSON.parse(saved);
-        setTimeout(() => {
-          if (savedSessions) setSessions(savedSessions);
-          if (currentId) setCurrentSessionId(currentId);
-          if (modelPref) setSelectedModel(validateModel(modelPref));
-        }, 0);
-      } catch (e) { console.error('Load Error:', e); }
-    } else {
-      const id = 'initial-session';
-      const now = Date.now();
-      setTimeout(() => {
-        setSessions({ [id]: { id, title: 'New Chat', messages: [], createdAt: now } });
-      }, 0);
+      setTimeout(() => setSelectedModel(validateModel(saved)), 0);
     }
   }, []);
 
-  // Sync current messages to sessions state
   useEffect(() => {
-    if (messages.length > 0) {
-      setTimeout(() => {
-        setSessions(prev => {
-          if (!prev[currentSessionId]) return prev;
-          return {
-            ...prev,
-            [currentSessionId]: { ...prev[currentSessionId], messages }
-          };
-        });
-      }, 0);
-    }
-  }, [messages, currentSessionId]);
-
-  // Save all to local storage
-  useEffect(() => {
-    if (Object.keys(sessions).length > 0) {
-      localStorage.setItem('chat-lab-v3', JSON.stringify({ 
-        sessions, 
-        currentId: currentSessionId,
-        modelPref: selectedModel
-      }));
-    }
-  }, [sessions, currentSessionId, selectedModel]);
-
-  // ── Actions ─────────────────────────────────────────────────────────────
-  const createNewSession = useCallback(() => {
-    const id = crypto.randomUUID();
-    const now = Date.now();
-    setSessions(prev => ({
-      ...prev,
-      [id]: { id, title: 'New Chat', messages: [], createdAt: now }
-    }));
-    setCurrentSessionId(id);
-    setMessages([]);
-    setInput('');
-  }, [setMessages, setInput]);
-
-  const deleteSession = useCallback((id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const now = Date.now();
-    setSessions(prev => {
-      const sessionIds = Object.keys(prev);
-      if (sessionIds.length <= 1) {
-        setMessages([]);
-        return { [id]: { ...prev[id], title: 'New Chat', messages: [], createdAt: now } };
-      }
-      const newSessions = { ...prev };
-      delete newSessions[id];
-      const nextId = Object.keys(newSessions)[0];
-      setCurrentSessionId(nextId);
-      return newSessions;
-    });
-  }, [setMessages]);
-
-  const switchSession = useCallback((id: string) => {
-    const session = sessions[id];
-    if (session) {
-      setCurrentSessionId(id);
-      setMessages(session.messages);
-    }
-  }, [sessions, setMessages]);
+    localStorage.setItem('chat-lab-v3-model', selectedModel);
+  }, [selectedModel]);
 
   // ── Geolocation ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -210,13 +251,26 @@ export default function Chat() {
   }, [messages, isLoading]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
-  const onChatSubmit = useCallback((e?: React.FormEvent<HTMLFormElement>) => {
+  const onChatSubmit = useCallback(async (e?: React.FormEvent<HTMLFormElement>) => {
     if (e) e.preventDefault();
     const content = input.trim();
     if (!content && (!files || files.length === 0)) return;
 
+    if (!currentSessionId || !encryptionKey) return;
+
+    // Encrypt and save user message to Supabase
+    const fileArray = files ? Array.from(files) : undefined;
+    const encryptedContent = await encrypt(content || (fileArray?.length ? "Processing attachments..." : ""), encryptionKey);
+    
+    await supabase.from('messages').insert({
+      session_id: currentSessionId,
+      role: 'user',
+      content: encryptedContent,
+      experimental_attachments: fileArray
+    });
+
     if (isLoading) {
-      setPendingQueue(prev => [...prev, { content, files: files ? Array.from(files) : undefined }]);
+      setPendingQueue(prev => [...prev, { content, files: fileArray }]);
       setInput('');
       setFiles(undefined);
       return;
@@ -224,7 +278,15 @@ export default function Chat() {
 
     handleSubmit(e, { experimental_attachments: files });
     setFiles(undefined);
-  }, [input, files, handleSubmit, isLoading, setInput]);
+  }, [input, files, handleSubmit, isLoading, setInput, currentSessionId, encryptionKey]);
+
+  if (isInitializing) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-background">
+        <SkeletonMessage />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-background text-foreground font-body transition-colors duration-500 overflow-hidden">
@@ -240,7 +302,7 @@ export default function Chat() {
           >
             <div className="p-4 flex flex-col h-full">
               <button 
-                onClick={createNewSession}
+                onClick={() => encryptionKey && createNewSession(encryptionKey)}
                 className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-foreground text-background rounded-xl font-medium text-sm hover:opacity-90 transition-all active:scale-95 shadow-sm mb-6"
               >
                 <Plus size={18} />
@@ -254,7 +316,7 @@ export default function Chat() {
                 {Object.values(sessions).sort((a,b) => b.createdAt - a.createdAt).map((s) => (
                   <button
                     key={s.id}
-                    onClick={() => switchSession(s.id)}
+                    onClick={() => encryptionKey && switchSession(s.id, sessions, encryptionKey)}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm transition-all group ${
                       currentSessionId === s.id 
                         ? 'bg-white dark:bg-stone-800 shadow-sm border border-border text-foreground' 
@@ -322,7 +384,7 @@ export default function Chat() {
                       Deep Reasoning Interface
                     </h2>
                     <p className="text-stone-500 dark:text-stone-400 max-w-sm mx-auto text-base">
-                      The local model is initialized and ready for technical research.
+                      Select a research prompt or begin a new exploration.
                     </p>
                   </div>
                   

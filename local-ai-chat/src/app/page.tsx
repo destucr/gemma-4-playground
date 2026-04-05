@@ -1,6 +1,6 @@
 'use client';
 
-import { useChat } from 'ai/react';
+import { useChat } from '@ai-sdk/react';
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { ChatMessage } from './ChatMessage';
 import { Header } from '@/components/Header';
@@ -65,7 +65,6 @@ export default function Chat() {
     onFinish: async (message) => {
       if (!currentSessionId || !encryptionKey) return;
       
-      // Encrypt and save assistant message to Supabase
       const encryptedContent = await encrypt(message.content, encryptionKey);
       await supabase.from('messages').insert({
         session_id: currentSessionId,
@@ -74,19 +73,46 @@ export default function Chat() {
         experimental_attachments: message.experimental_attachments
       });
 
-      // Auto-title update if first exchange
       const currentSession = sessions[currentSessionId];
       if (currentSession && (currentSession.title === 'New Chat' || !currentSession.title)) {
-        const firstMsg = [...messages, message].find(m => m.role === 'user')?.content || 'New Chat';
-        const newTitle = firstMsg.slice(0, 30) + (firstMsg.length > 30 ? '...' : '');
-        
-        const encryptedTitle = await encrypt(newTitle, encryptionKey);
-        await supabase.from('sessions').update({ title: encryptedTitle }).eq('id', currentSessionId);
-        
-        setSessions(prev => ({
-          ...prev,
-          [currentSessionId]: { ...currentSession, title: newTitle }
-        }));
+        // Trigger Background Title Generation
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          body: JSON.stringify({
+            messages: [...messages, message].slice(-2),
+            model: selectedModel === 'auto' ? 'gemma4:e4b' : selectedModel,
+            isTitleGen: true
+          })
+        });
+
+        if (response.ok) {
+          const reader = response.body?.getReader();
+          const decoder = new TextDecoder();
+          let newTitle = '';
+          while (true) {
+            const { done, value } = await reader!.read();
+            if (done) break;
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+            for (const line of lines) {
+              if (line.startsWith('0:')) {
+                try {
+                  newTitle += JSON.parse(line.slice(2));
+                } catch (e) { console.error(e); }
+              }
+            }
+          }
+
+          if (newTitle) {
+            const cleanTitle = newTitle.trim().replace(/^["']|["']$/g, '');
+            const encryptedTitle = await encrypt(cleanTitle, encryptionKey);
+            await supabase.from('sessions').update({ title: encryptedTitle }).eq('id', currentSessionId);
+            setSessions(prev => ({
+              ...prev,
+              [currentSessionId]: { ...currentSession, title: cleanTitle }
+            }));
+          }
+        }
       }
     }
   });
@@ -105,7 +131,6 @@ export default function Chat() {
     setCurrentSessionId(id);
     localStorage.setItem('last-session-id', id);
 
-    // Fetch and decrypt messages
     const { data: msgs } = await supabase
       .from('messages')
       .select('*')
@@ -114,9 +139,11 @@ export default function Chat() {
 
     const formattedMsgs: Message[] = await Promise.all((msgs || []).map(async m => ({
       id: m.id,
-      role: m.role as unknown as Message['role'],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      role: m.role as any,
       content: await decrypt(m.content, key),
-      experimental_attachments: m.experimental_attachments as unknown as Message['experimental_attachments']
+      experimental_attachments: m.experimental_attachments,
+      createdAt: new Date(m.created_at)
     })));
 
     setMessages(formattedMsgs);
@@ -164,11 +191,9 @@ export default function Chat() {
   // ── Persistence: Load from Supabase ──────────────────────────────────────
   useEffect(() => {
     async function init() {
-      // 1. Get/Create Encryption Key
       const key = await getOrCreateKey();
-      setEncryptionKey(key);
+      setTimeout(() => setEncryptionKey(key), 0);
 
-      // 2. Fetch Sessions
       const { data: savedSessions } = await supabase
         .from('sessions')
         .select('*')
@@ -184,20 +209,21 @@ export default function Chat() {
             createdAt: new Date(s.created_at).getTime()
           };
         }
-        setSessions(sessionMap);
-        
-        const lastId = localStorage.getItem('last-session-id') || savedSessions[0].id;
-        await switchSession(lastId, sessionMap, key);
+        setTimeout(() => {
+          setSessions(sessionMap);
+          const lastId = localStorage.getItem('last-session-id') || savedSessions[0].id;
+          switchSession(lastId, sessionMap, key);
+          setIsInitializing(false);
+        }, 0);
       } else {
         await createNewSession(key);
+        setTimeout(() => setIsInitializing(false), 0);
       }
-      setIsInitializing(false);
     }
     init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only on mount
+  }, []);
 
-  // Sync model preference
   useEffect(() => {
     const saved = localStorage.getItem('chat-lab-v3-model');
     if (saved) {
@@ -258,7 +284,6 @@ export default function Chat() {
 
     if (!currentSessionId || !encryptionKey) return;
 
-    // Encrypt and save user message to Supabase
     const fileArray = files ? Array.from(files) : undefined;
     const encryptedContent = await encrypt(content || (fileArray?.length ? "Processing attachments..." : ""), encryptionKey);
     
@@ -346,7 +371,6 @@ export default function Chat() {
       </AnimatePresence>
 
       <div className="flex-1 flex flex-col relative overflow-hidden">
-        {/* Toggle */}
         <button 
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
           className="absolute left-0 top-1/2 -translate-y-1/2 z-40 p-1 bg-background border border-border rounded-r-lg shadow-md hover:bg-stone-50 dark:hover:bg-stone-900 transition-colors"

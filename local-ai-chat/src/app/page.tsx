@@ -45,6 +45,7 @@ export default function Chat() {
   });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -111,7 +112,16 @@ export default function Chat() {
 
   // ── Effects ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = mainRef.current;
+    if (!container) return;
+
+    // Only auto-scroll if the user is already near the bottom (threshold of 150px)
+    const threshold = 150;
+    const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + threshold;
+
+    if (isAtBottom) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages, isLoading]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
@@ -152,7 +162,7 @@ export default function Chat() {
         onModelChange={setSelectedModel}
       />
 
-      <main className="flex-1 overflow-y-auto">
+      <main ref={mainRef} className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto p-6 md:p-12 w-full">
           
           <AnimatePresence mode="wait">

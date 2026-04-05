@@ -14,6 +14,7 @@ interface InteractionBarProps {
   setFiles: (files: FileList | undefined) => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  selectedModel: string;
 }
 
 export function InteractionBar({
@@ -26,7 +27,8 @@ export function InteractionBar({
   files,
   setFiles,
   fileInputRef,
-  textareaRef
+  textareaRef,
+  selectedModel
 }: InteractionBarProps) {
   
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -154,31 +156,31 @@ export function InteractionBar({
               onKeyDown={onKeyDown}
               autoComplete="off"
               style={{ maxHeight: '120px' }}
-              />
-              </div>
+            />
+          </div>
 
-              <button
-              type="submit"
-              className={`p-2.5 rounded-xl transition-all shadow-lg active:scale-95 flex-shrink-0 border border-transparent ${
+          <button
+            type="submit"
+            className={`p-2.5 rounded-xl transition-all shadow-lg active:scale-95 flex-shrink-0 border border-transparent ${
               isLoading 
                 ? 'bg-stone-100 dark:bg-stone-800 text-foreground/40' 
                 : 'bg-foreground dark:bg-background text-background dark:text-foreground hover:opacity-90'
-              } disabled:opacity-50 disabled:cursor-not-allowed`}
-              disabled={!input.trim() && (!files || files.length === 0)}
-              >
-              {isLoading ? (
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
+            disabled={!input.trim() && (!files || files.length === 0)}
+          >
+            {isLoading ? (
               <Loader2 size={18} className="animate-spin" />
-              ) : (
+            ) : (
               <Send size={18} />
-              )}
-              </button>
-              </form>
-
-              <div className="text-center mt-4">
-              <p className="text-[10px] text-foreground/60 font-regular opacity-80">
-              Technical Research Interface • Gemma 4 (4b)
-              </p>
-              </div>
+            )}
+          </button>
+        </form>
+        
+        <div className="text-center mt-4">
+          <p className="text-[10px] text-foreground/60 font-thin tracking-widest opacity-80">
+            Technical Research Interface • {selectedModel === 'auto' ? 'Gemma 4 (26b) • Auto' : selectedModel === 'gemma4:e4b' ? 'Gemma 4 (4b)' : 'Gemma 4 (26b)'}
+          </p>
+        </div>
       </div>
     </footer>
   );

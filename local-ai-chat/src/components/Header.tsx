@@ -9,6 +9,8 @@ interface HeaderProps {
   confirmClear: boolean;
   setConfirmClear: (val: boolean) => void;
   onClear: () => void;
+  selectedModel: string;
+  onModelChange: (model: string) => void;
 }
 
 export function Header({
@@ -17,7 +19,9 @@ export function Header({
   hasMessages,
   confirmClear,
   setConfirmClear,
-  onClear
+  onClear,
+  selectedModel,
+  onModelChange
 }: HeaderProps) {
   return (
     <header className="w-full bg-background/80 backdrop-blur-md border-b border-border p-4 sticky top-0 z-30 shadow-sm transition-all duration-300">
@@ -26,11 +30,11 @@ export function Header({
           <div className="w-10 h-10 bg-foreground text-background rounded-lg flex items-center justify-center shadow-inner ring-1 ring-border/50 transition-transform hover:scale-105 active:scale-95">
             <Sparkles size={20} className="text-background" />
           </div>
-          
+
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
                 <h1 className="text-base font-display tracking-tight text-foreground/90 leading-none font-normal">
-                  Playground Gemma 4
+                  Intelligence Lab
                 </h1>
                 {userCountry && (
                   <div className="flex items-center gap-1 px-2 py-0.5 bg-stone-100 dark:bg-zinc-800 rounded-full border border-border/60">
@@ -41,11 +45,18 @@ export function Header({
                   </div>
                 )}
               </div>
-              <span className="text-[11px] font-body text-foreground/60 mt-0.5 font-normal">
-                Gemma 4 (e4b) • Research Mode
-              </span>
+
+              <select
+                value={selectedModel}
+                onChange={(e) => onModelChange(e.target.value)}
+                className="text-[11px] font-body text-foreground/60 bg-transparent border-none outline-none cursor-pointer hover:text-foreground transition-colors appearance-none -mt-0.5"
+              >
+                <option value="auto">Auto Intelligence</option>
+                <option value="gemma4:e4b">Gemma 4 (4b)</option>
+                <option value="gemma4:26b">Gemma 4 (26b)</option>
+              </select>
             </div>
-            </div>
+        </div>
 
             <div className="flex items-center gap-3 min-h-[36px]">
             {pendingQueueCount > 0 && (

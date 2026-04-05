@@ -1,6 +1,7 @@
 import { createOllama } from "ollama-ai-provider";
 import { streamText, type CoreMessage } from "ai";
 import { normalizeOllamaUrl } from "@/lib/utils";
+import { agentTools } from "@/lib/agent-tools";
 
 const ollama = createOllama({
   baseURL: normalizeOllamaUrl(process.env.OLLAMA_BASE_URL),
@@ -86,27 +87,32 @@ function getSystemPrompt(country: string | null, crisisDetected: boolean) {
     ? `LOCATION CONTEXT: The user is in ${country}. Use this for regional relevance if applicable.`
     : "";
 
-  // MANDATORY: Start with <|think|> to enable Gemma 4's reasoning channel
   return `<|think|>
     ${locationInstruction}
     ${crisisDetected ? "CRISIS MODE: The user has indicated a safety risk. Prioritize immediate, direct help resources." : ""}
 
     You are an Expert Software Engineer and technical researcher. Your primary objective is to provide logically sound, robust, and factually correct information.
 
+    TOOL CAPABILITIES:
+    - You have direct access to the local file system and shell via integrated tools.
+    - You can read files (readFile), write/edit files (writeFile), list directories (listDirectory), and run shell commands like git, grep, or npm (runCommand).
+    - Use these tools to research the codebase, verify your assumptions, or implement changes requested by the user.
+    - When asked to "edit" or "fix" code, always readFile first to understand the context, then writeFile with the corrected content.
+    - For exploratory tasks, use listDirectory and grep to find relevant files before acting.
+
     CORE PRINCIPLES:
-    - MAXIMUM CORRECTNESS: Prioritize technical accuracy above all else. If you are unsure of a detail, explicitly state your uncertainty or provide the most robust alternative.
+    - MAXIMUM CORRECTNESS: Prioritize technical accuracy above all else.
     - REASONING FIRST: For complex problems, think step-by-step. Break down your logic before providing the final conclusion.
-    - CODE ROBUSTNESS: When writing code, ensure it follows industry best practices (clean code, error handling, performance considerations).
-    - CONTEXTUAL AWARENESS: Analyze the user's input deeply. If a request is ambiguous, provide the most likely correct interpretation while briefly noting alternatives.
+    - CODE ROBUSTNESS: Ensure code follows best practices (clean code, error handling).
+    - CONTEXTUAL AWARENESS: Analyze input deeply. Research the local files if the request involves the current project.
 
     FORMATTING RULES:
-    - CHALKBOARD VISUALIZER: Use the HTML <div class="chalkboard"> for architectural diagrams, logic flows, math, or structured sequences.
-      Format: <div class="chalkboard"><div class="chalkboard-title">System Architecture</div><ul><li>Step or Component</li></ul></div>
-    - CODE BLOCKS: Use standard triple backticks with language identifiers for all programming code.
-    - STRUCTURE: Use concise, professional language. Avoid filler or unnecessary conversational preamble.
+    - CHALKBOARD VISUALIZER: Use the HTML <div class="chalkboard"> for architectural diagrams, logic flows, or structured sequences.
+    - CODE BLOCKS: Use standard triple backticks with language identifiers.
+    - STRUCTURE: Professional language. Avoid unnecessary conversational preamble.
 
     SAFETY & INTEGRITY:
-    - FACTUAL GROUNDING: Do not hallucinate. Verify all technical claims against established documentation.
+    - FACTUAL GROUNDING: Do not hallucinate. Verify technical claims against documentation or by using tools.
     - SECURITY: Never provide code or instructions that encourage insecure practices or malicious behavior.
   `;
 }
@@ -125,7 +131,6 @@ export async function POST(req: Request) {
     }
 
     // ─── Thinking Mode Rule: Strip prior thought blocks from history ─────────
-    // Multi-turn chat rule: only keep final visible answer in chat history.
     const cleanMessages = messages.map((m: { role: string; content: string }) => ({
       ...m,
       content: m.role === 'assistant' 
@@ -163,13 +168,14 @@ export async function POST(req: Request) {
       model: ollama(selectedModel),
       system: getSystemPrompt(country, crisisDetected),
       messages: cleanMessages as unknown as CoreMessage[],
+      tools: agentTools,
+      maxSteps: 5, // Allow multi-step agentic reasoning
     });
 
     return result.toDataStreamResponse();
   } catch (error: unknown) {
     const err = error as Error & { cause?: unknown };
     console.error("Chat API Error:", err);
-    // Log more details if available
     if (err.cause) console.error("Error Cause:", err.cause);
     
     return new Response(

@@ -10,8 +10,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { MessageSquare, Plus, Trash2, ChevronLeft, ChevronRight, Layout, Sparkles } from 'lucide-react';
 import { validateModel } from '@/lib/utils';
 import { getOrCreateKey, encrypt, decrypt } from '@/lib/encryption';
-import { Message } from 'ai';
-import { supabase } from '@/lib/supabase';
+import { Message } from '@ai-sdk/react';
+import { getSupabaseClient } from '@/lib/supabase';
 
 // ─── Constants & Types ──────────────────────────────────────────────────────
 const STARTER_MISSIONS = [
@@ -35,7 +35,8 @@ export default function Chat() {
   const [persistedError, setPersistedError] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string>('auto');
   
-  // ── Multi-Session & Encryption State ──────────────────────────────────────
+  // ── Multi-Session & Encryption & Ownership State ──────────────────────────
+  const [clientId, setClientId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<Record<string, ChatSession>>({});
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -63,11 +64,14 @@ export default function Chat() {
     onError: () => setPersistedError(true),
     onResponse: () => setPersistedError(false),
     onFinish: async (message) => {
-      if (!currentSessionId || !encryptionKey) return;
+      if (!currentSessionId || !encryptionKey || !clientId) return;
       
+      const db = getSupabaseClient(clientId);
       const encryptedContent = await encrypt(message.content, encryptionKey);
-      await supabase.from('messages').insert({
+      
+      await db.from('messages').insert({
         session_id: currentSessionId,
+        client_id: clientId,
         role: message.role,
         content: encryptedContent,
         experimental_attachments: message.experimental_attachments
@@ -106,7 +110,7 @@ export default function Chat() {
           if (newTitle) {
             const cleanTitle = newTitle.trim().replace(/^["']|["']$/g, '');
             const encryptedTitle = await encrypt(cleanTitle, encryptionKey);
-            await supabase.from('sessions').update({ title: encryptedTitle }).eq('id', currentSessionId);
+            await db.from('sessions').update({ title: encryptedTitle }).eq('id', currentSessionId);
             setSessions(prev => ({
               ...prev,
               [currentSessionId]: { ...currentSession, title: cleanTitle }
@@ -124,14 +128,15 @@ export default function Chat() {
 
   // ── Action Callbacks ──────────────────────────────────────────────────
   
-  const switchSession = useCallback(async (id: string, currentSessions: Record<string, ChatSession>, key: CryptoKey) => {
+  const switchSession = useCallback(async (id: string, currentSessions: Record<string, ChatSession>, key: CryptoKey, cid: string) => {
     const session = currentSessions[id];
     if (!session) return;
 
     setCurrentSessionId(id);
     localStorage.setItem('last-session-id', id);
 
-    const { data: msgs } = await supabase
+    const db = getSupabaseClient(cid);
+    const { data: msgs } = await db
       .from('messages')
       .select('*')
       .eq('session_id', id)
@@ -139,22 +144,23 @@ export default function Chat() {
 
     const formattedMsgs: Message[] = await Promise.all((msgs || []).map(async m => ({
       id: m.id,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      role: m.role as any,
+      role: m.role as unknown as Message['role'],
       content: await decrypt(m.content, key),
-      experimental_attachments: m.experimental_attachments,
+      experimental_attachments: m.experimental_attachments as unknown as Message['experimental_attachments'],
       createdAt: new Date(m.created_at)
     })));
 
     setMessages(formattedMsgs);
   }, [setMessages]);
 
-  const createNewSession = useCallback(async (key: CryptoKey) => {
+  const createNewSession = useCallback(async (key: CryptoKey, cid: string) => {
     const id = crypto.randomUUID();
     const encryptedTitle = await encrypt('New Chat', key);
     
-    await supabase.from('sessions').insert({
+    const db = getSupabaseClient(cid);
+    await db.from('sessions').insert({
       id,
+      client_id: cid,
       title: encryptedTitle,
       model_pref: selectedModel
     });
@@ -171,7 +177,10 @@ export default function Chat() {
 
   const deleteSession = useCallback(async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    await supabase.from('sessions').delete().eq('id', id);
+    if (!clientId) return;
+
+    const db = getSupabaseClient(clientId);
+    await db.from('sessions').delete().eq('id', id);
 
     setSessions(prev => {
       const newSessions = { ...prev };
@@ -179,22 +188,33 @@ export default function Chat() {
       
       const remainingIds = Object.keys(newSessions);
       if (remainingIds.length === 0) {
-        if (encryptionKey) createNewSession(encryptionKey);
+        if (encryptionKey) createNewSession(encryptionKey, clientId);
         return prev;
       } else if (id === currentSessionId) {
-        if (encryptionKey) switchSession(remainingIds[0], newSessions, encryptionKey);
+        if (encryptionKey) switchSession(remainingIds[0], newSessions, encryptionKey, clientId);
       }
       return newSessions;
     });
-  }, [currentSessionId, encryptionKey, createNewSession, switchSession]);
+  }, [clientId, currentSessionId, encryptionKey, createNewSession, switchSession]);
 
   // ── Persistence: Load from Supabase ──────────────────────────────────────
   useEffect(() => {
     async function init() {
+      // 1. Get/Create Client ID
+      let cid = localStorage.getItem('lab-client-id');
+      if (!cid) {
+        cid = crypto.randomUUID();
+        localStorage.setItem('lab-client-id', cid);
+      }
+      setClientId(cid);
+
+      // 2. Get/Create Encryption Key
       const key = await getOrCreateKey();
       setTimeout(() => setEncryptionKey(key), 0);
 
-      const { data: savedSessions } = await supabase
+      // 3. Fetch Sessions
+      const db = getSupabaseClient(cid);
+      const { data: savedSessions } = await db
         .from('sessions')
         .select('*')
         .order('created_at', { ascending: false });
@@ -212,11 +232,11 @@ export default function Chat() {
         setTimeout(() => {
           setSessions(sessionMap);
           const lastId = localStorage.getItem('last-session-id') || savedSessions[0].id;
-          switchSession(lastId, sessionMap, key);
+          switchSession(lastId, sessionMap, key, cid!);
           setIsInitializing(false);
         }, 0);
       } else {
-        await createNewSession(key);
+        await createNewSession(key, cid);
         setTimeout(() => setIsInitializing(false), 0);
       }
     }
@@ -282,7 +302,7 @@ export default function Chat() {
     const content = input.trim();
     if (!content && (!files || files.length === 0)) return;
 
-    if (!currentSessionId || !encryptionKey) return;
+    if (!currentSessionId || !encryptionKey || !clientId) return;
 
     // ── Serialize Attachments ──────────────────────────────────────────
     const fileArray = files ? Array.from(files) : [];
@@ -299,10 +319,12 @@ export default function Chat() {
     }));
 
     // Encrypt and save user message to Supabase
+    const db = getSupabaseClient(clientId);
     const encryptedContent = await encrypt(content || (fileArray.length ? "Processing attachments..." : ""), encryptionKey);
     
-    await supabase.from('messages').insert({
+    await db.from('messages').insert({
       session_id: currentSessionId,
+      client_id: clientId,
       role: 'user',
       content: encryptedContent,
       experimental_attachments: attachments
@@ -317,7 +339,7 @@ export default function Chat() {
 
     handleSubmit(e, { experimental_attachments: files });
     setFiles(undefined);
-  }, [input, files, handleSubmit, isLoading, setInput, currentSessionId, encryptionKey]);
+  }, [input, files, handleSubmit, isLoading, setInput, currentSessionId, encryptionKey, clientId]);
 
   if (isInitializing) {
     return (
@@ -341,7 +363,7 @@ export default function Chat() {
           >
             <div className="p-4 flex flex-col h-full">
               <button 
-                onClick={() => encryptionKey && createNewSession(encryptionKey)}
+                onClick={() => encryptionKey && clientId && createNewSession(encryptionKey, clientId)}
                 className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-foreground text-background rounded-xl font-medium text-sm hover:opacity-90 transition-all active:scale-95 shadow-sm mb-6"
               >
                 <Plus size={18} />
@@ -355,7 +377,7 @@ export default function Chat() {
                 {Object.values(sessions).sort((a,b) => b.createdAt - a.createdAt).map((s) => (
                   <button
                     key={s.id}
-                    onClick={() => encryptionKey && switchSession(s.id, sessions, encryptionKey)}
+                    onClick={() => encryptionKey && clientId && switchSession(s.id, sessions, encryptionKey, clientId)}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm transition-all group ${
                       currentSessionId === s.id 
                         ? 'bg-white dark:bg-stone-800 shadow-sm border border-border text-foreground' 

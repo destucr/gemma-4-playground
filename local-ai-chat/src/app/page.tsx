@@ -115,12 +115,12 @@ export default function Chat() {
     const container = mainRef.current;
     if (!container) return;
 
-    // Only auto-scroll if the user is already near the bottom (threshold of 150px)
     const threshold = 150;
     const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + threshold;
 
     if (isAtBottom) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      // Use 'auto' instead of 'smooth' during loading to prevent jank
+      messagesEndRef.current?.scrollIntoView({ behavior: isLoading ? 'auto' : 'smooth' });
     }
   }, [messages, isLoading]);
 

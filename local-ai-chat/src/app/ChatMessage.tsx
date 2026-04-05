@@ -6,7 +6,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeRaw from 'rehype-raw';
 import rehypeKatex from 'rehype-katex';
-import { useState } from 'react';
+import { useState, useMemo, memo } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { motion } from 'framer-motion';
@@ -18,15 +18,36 @@ interface ChatMessageProps {
 }
 
 /**
- * ChatMessage component for rendering individual messages with robust rendering and no 'pre-selected' look.
+ * ChatMessage component for rendering individual messages with robust rendering.
+ * Wrapped in memo to prevent expensive re-renders of static chat history during active streaming.
  */
-export function ChatMessage({ message, isTeacher }: ChatMessageProps) {
+export const ChatMessage = memo(function ChatMessage({ message, isTeacher }: ChatMessageProps) {
   const [copied, setCopied] = useState(false);
 
-  // Extract thought block if present
-  const thoughtMatch = /<\|channel>thought([\s\S]*?)<channel\|>/.exec(message.content);
-  const thoughtContent = thoughtMatch ? thoughtMatch[1].trim() : null;
-  const visibleContent = message.content.replace(/<\|channel>thought[\s\S]*?<channel\|>/, '').trim();
+  // ── Stream-aware Parsing Logic ──────────────────────────────────────────
+  const { thoughtContent, visibleContent } = useMemo(() => {
+    const content = message.content;
+    const thoughtStartTag = '<|channel>thought';
+    const thoughtEndTag = '<channel|>';
+
+    let thought: string | null = null;
+    let visible = content;
+
+    const startIndex = content.indexOf(thoughtStartTag);
+    if (startIndex !== -1) {
+      const endIndex = content.indexOf(thoughtEndTag);
+      if (endIndex !== -1) {
+        // Complete thought block found
+        thought = content.substring(startIndex + thoughtStartTag.length, endIndex).trim();
+        visible = (content.substring(0, startIndex) + content.substring(endIndex + thoughtEndTag.length)).trim();
+      } else {
+        // Incomplete thought block (still streaming)
+        thought = content.substring(startIndex + thoughtStartTag.length).trim();
+        visible = content.substring(0, startIndex).trim();
+      }
+    }
+    return { thoughtContent: thought, visibleContent: visible };
+  }, [message.content]);
 
   const copyToClipboard = async () => {
     try {
@@ -64,8 +85,8 @@ export function ChatMessage({ message, isTeacher }: ChatMessageProps) {
       <div
         className={`relative transition-all duration-300 flex flex-col ${
           !isTeacher
-            ? 'bg-[#121212] text-[#fcfaf7] rounded-2xl rounded-tr-none px-6 pt-5 pb-4 max-w-[85%] shadow-lg'
-            : 'bg-white dark:bg-[#1e1e1e] border border-border text-[#121212] dark:text-[#fcfaf7] rounded-2xl rounded-tl-none px-6 pt-6 pb-4 max-w-[85%] shadow-sm hover:shadow-md'
+            ? 'bg-[#121212] text-[#fcfaf7] rounded-2xl rounded-tr-none px-5 py-3 max-w-[85%] shadow-lg'
+            : 'bg-white dark:bg-[#1e1e1e] border border-border text-[#121212] dark:text-[#fcfaf7] rounded-2xl rounded-tl-none px-5 py-3 max-w-[85%] shadow-sm hover:shadow-md'
         }`}
       >
         {/* Internal Reasoning (Thought Channel) */}
@@ -75,7 +96,7 @@ export function ChatMessage({ message, isTeacher }: ChatMessageProps) {
               <div className="w-1.5 h-1.5 bg-foreground/20 rounded-full" />
               <span className="text-[10px] font-bold tracking-widest text-foreground/40 uppercase">Internal Reasoning</span>
             </div>
-            <div className="text-xs text-foreground/50 font-mono leading-relaxed bg-black/5 dark:bg-white/5 p-4 rounded-xl italic">
+            <div className="text-xs text-foreground/50 font-mono leading-relaxed bg-black/5 dark:bg-white/5 p-4 rounded-xl italic whitespace-pre-wrap">
               {thoughtContent}
             </div>
           </div>
@@ -111,7 +132,7 @@ export function ChatMessage({ message, isTeacher }: ChatMessageProps) {
                   );
                 }
 
-                // Inline code: NO background to avoid the 'selected' look
+                // Inline code
                 return (
                   <code 
                     {...rest} 
@@ -160,4 +181,4 @@ export function ChatMessage({ message, isTeacher }: ChatMessageProps) {
       </div>
     </motion.article>
   );
-}
+});
